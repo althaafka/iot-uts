@@ -44,7 +44,7 @@ function App() {
 
   const calculateLatency = (sendAt, receiveAt) => {
     if (typeof sendAt !== 'number' || typeof receiveAt !== 'number') return 'N/A';
-    return receiveAt - sendAt;
+    return Math.max(receiveAt - sendAt, 0);
   };
 
   const calculateInterval = (currentCreatedAt, previousCreatedAt) => {
@@ -55,7 +55,7 @@ function App() {
   const latencyData = images.map(image => calculateLatency(image.sendAt, image.receiveAt));
 
   const intervalData = images.map((image, index) => {
-    if (index === 0) return 0;
+    if (index === 0 || image.id === 0) return 0;
     return calculateInterval(image.createdAt, images[index-1].createdAt);
   });
 
@@ -84,6 +84,40 @@ function App() {
       },
     ],
   };
+
+const calculateAverage = (arr) => {
+  if (arr.length === 0) return 0;
+  const sum = arr.reduce((acc, val) => acc + val, 0);
+  return Math.round(sum / arr.length);
+};
+
+const segments = [];
+let currentSegment = [];
+images.forEach((img, idx) => {
+  if (img.id === 0 && currentSegment.length > 0) {
+    segments.push(currentSegment);
+    currentSegment = [];
+  }
+  currentSegment.push(img);
+});
+if (currentSegment.length > 0) {
+  segments.push(currentSegment);
+}
+
+const averageStats = segments.map((segment, index) => {
+  const latencies = segment.map(img => calculateLatency(img.sendAt, img.receiveAt));
+  const intervals = segment.map((img, i) => {
+    if (i === 0) return 0;
+    return calculateInterval(img.createdAt, segment[i - 1].createdAt);
+  });
+
+  return {
+    segment: index + 1,
+    avgLatency: calculateAverage(latencies),
+    avgInterval: calculateAverage(intervals.slice(1)),
+  };
+});
+
 
   return (
     <Container maxWidth="lg" style={{ padding: '2rem 0' }}>
@@ -119,7 +153,34 @@ function App() {
             </Grid>
           </Grid>
 
+          {/* Segment Average Stats */}
+          <div style={{ marginBottom: '2rem' }}>
+            <Typography variant="h6" gutterBottom>Average Latency & Interval per Segment</Typography>
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Segment</strong></TableCell>
+                    <TableCell><strong>Average Latency (ms)</strong></TableCell>
+                    <TableCell><strong>Average Interval (ms)</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {averageStats.map((stat, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>{stat.segment}</TableCell>
+                      <TableCell>{stat.avgLatency}</TableCell>
+                      <TableCell>{stat.avgInterval}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </div>
+
+
           {/* Image Data Table */}
+          <Typography variant="h6" gutterBottom>Data</Typography>
           <TableContainer component={Paper}>
             <Table>
               <TableHead>
