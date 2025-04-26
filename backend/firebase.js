@@ -1,9 +1,9 @@
 const admin = require('firebase-admin');
-const serviceAccount = require('./serviceAccountKey.json'); // download dari Firebase Console
+const serviceAccount = require('./serviceAccountKey.json');
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  storageBucket: 'gs://iot-uts-1352130.firebasestorage.app', // ganti dengan bucket kamu
+  storageBucket: 'gs://iot-uts-1352130.firebasestorage.app',
 });
 
 const db = admin.firestore();
