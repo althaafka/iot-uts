@@ -21,6 +21,18 @@ services:
     working_dir: /app
     command: node index.js
     restart: unless-stopped
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+    working_dir: /app
+    command: npm start
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
 
 volumes:
   mosquitto_data:

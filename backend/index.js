@@ -1,12 +1,15 @@
 require("dotenv").config();
 const express = require("express");
+const cors = require('cors');
+const decryptBase64AES = require('./decrypt.js')
+
 const mqtt = require("mqtt");
 const { db, bucket } = require('./firebase');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(cors());
 
 app.get('/', (req, res) => {
     res.json("hello")
@@ -30,12 +33,23 @@ mqttClient.on('connect', () => {
 // Handle incoming MQTT messages
 mqttClient.on('message', async (topic, message) => {
     try {
-      const { id, chunk_id, is_last, data } = JSON.parse(message.toString());
-  
+      const { id, chunk_id, timestamp, is_last, data: encrypted_data } = JSON.parse(message.toString());
+      const data = decryptBase64AES(encrypted_data);
+
+      const receiveTime = Date.now();
+      const messageTimestamp = typeof timestamp === 'string' ? 
+          new Date(timestamp).getTime() : 
+          timestamp * (timestamp < 1e12 ? 1000 : 1);
+      const latency = Math.max(receiveTime - messageTimestamp, 0);
+      
+      console.log(`Latensi chunk ${chunk_id} untuk gambar ${id}: ${latency} ms, ${receiveTime} dan ${messageTimestamp}`);
+
+      // First chunk
       if (!chunkBuffer[id]) {
         chunkBuffer[id] = {
           chunks: [],
           lastChunkId: null,
+          sendAt: messageTimestamp
         };
       }
   
@@ -45,14 +59,13 @@ mqttClient.on('message', async (topic, message) => {
         chunkBuffer[id].lastChunkId = chunk_id;
       }
   
-      console.log(`Chunk ${chunk_id} diterima untuk gambar ${id}`);
-  
       const { chunks, lastChunkId } = chunkBuffer[id];
   
       if (lastChunkId !== null) {
         const isComplete = chunks.length === lastChunkId + 1 && chunks.every(c => c !== undefined);
-  
+        
         if (isComplete) {
+          chunkBuffer[id].receiveAt = receiveTime;
           const base64 = chunks.join('');
           const buffer = Buffer.from(base64, 'base64');
           const fileName = `image-${id}-${Date.now()}.jpg`;
@@ -65,7 +78,9 @@ mqttClient.on('message', async (topic, message) => {
           await db.collection('images').add({
             id,
             url: imageUrl,
-            uploadedAt: new Date()
+            sendAt: chunkBuffer[id].sendAt,
+            receiveAt: chunkBuffer[id].receiveAt,
+            createdAt: Date.now()
           });
           
           console.log(`Gambar ${id} diupload ke Firebase: ${imageUrl}`);
@@ -82,7 +97,7 @@ mqttClient.on('message', async (topic, message) => {
 // Get all images
 app.get('/images', async (req, res) => {
     try {
-      const snapshot = await db.collection('images').orderBy('uploadedAt', 'desc').get();
+      const snapshot = await db.collection('images').orderBy('createdAt', 'asc').get();
       
       const images = [];
       snapshot.forEach(doc => {
